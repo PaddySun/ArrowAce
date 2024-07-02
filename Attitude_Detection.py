@@ -142,13 +142,13 @@ with mp_pose.Pose(
             left_shoulder_current = current_landmarks[10]  # 左肩
             if displacement[LEFT_WRIST_INDEX] > 0.1:  # 阈值根据实际情况调整
                 # 执行语音播报
-                #engine.say("Bow mioving detected!")
-                #engine.runAndWait()
+                engine.say("Bow mioving detected!")
+                engine.runAndWait()
 
             # 瞄准检测
             # 检测左手是否接近左肩高度
             height_diff = abs(left_wrist_current[1] - left_shoulder_current[1])
-            print(n,height_diff)
+            #print(n,height_diff)
             if height_diff < 0.1 and n > 0:
                 # 执行语音播报
                 engine.say("Aim!")
