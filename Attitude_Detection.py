@@ -88,18 +88,18 @@ d = 0
 
 # 实现数据图标实时显示
 # 初始化一个列表用于存储height_diff数据
-height_diffs = []
+plot_lis = []
 
 # 添加一个子图用于显示height_diff
-fig_height_diff, ax_height_diff = plt.subplots(figsize=(8, 4))
-ax_height_diff.set_xlabel('Frame')
-ax_height_diff.set_ylabel('Height Difference')
-(ax_height_diff.plot([], []))  # 初始化空图
+fig_height_diff, plot_plot = plt.subplots(figsize=(8, 4))
+plot_plot.set_xlabel('Frame')
+plot_plot.set_ylabel('Height Difference')
+(plot_plot.plot([], []))  # 初始化空图
 
 # 初始化一个定时器，用于实时更新height_diff的显示
 timer = fig_height_diff.canvas.new_timer(interval=100)  # 每100毫秒更新一次
-timer.add_callback(lambda event: ax_height_diff.relim(), fig_height_diff.canvas)
-timer.add_callback(lambda event: ax_height_diff.autoscale_view(True,True,True), fig_height_diff.canvas)
+timer.add_callback(lambda event: plot_plot.relim(), fig_height_diff.canvas)
+timer.add_callback(lambda event: plot_plot.autoscale_view(True,True,True), fig_height_diff.canvas)
 timer.start()
 
 
@@ -163,12 +163,12 @@ with mp_pose.Pose(
                 n = 0
                 action = 0
             #print(n)
-            if n > 2:
+            if n > 2 :
                 # 执行语音播报
                 #speak_text("STOP")
                 #print("STOP")
                 action = 1
-                if start-action_time[0] > 2 :
+                if start-action_time[0] > 4 :
                     action_time[0] = start
 
             # # # 更新上一帧的关键点位置
@@ -180,7 +180,7 @@ with mp_pose.Pose(
                 #speak_text("RISE!")
                 #print("RISE!")
                 action = 2
-                if start-action_time[1] > 2 :
+                if start-action_time[1] > 2:
                     action_time[1] = start
  
 
@@ -199,24 +199,35 @@ with mp_pose.Pose(
 
             # 完整动作检验
             print(int(action_time[0])%1000,int(action_time[1])%1000,int(action_time[2])%1000)
-            if all(action_time[i] < action_time[i + 1] for i in range(len(action_time) - 2)) and action_time[2] - action_time[0] < 30:  
+            snapshot = all(action_time[i] < action_time[i + 1] for i in range(len(action_time) - 2)) and action_time[2] - action_time[0] < 60 #速射不预瞄
+            pre_acquisition = action_time[1] < action_time[2] and action_time[0] < action_time[2] and action_time[2] - action_time[0] > 2 and action_time[2] - action_time[0] < 60#预瞄，开工后停止再到靠位
+            if snapshot or pre_acquisition:  
+            #if action_time[1] < action_time[2] and action_time[2] - action_time[0] < 60:  
                     #校验动作依次完成
                     #校验动作在最大时间内完成
-                if start-action_time[3] > 2 :
+                if start-action_time[3] > 6 :
+                    action_time[0] = start + 1
                     action_time[3] = start
                     arrowsCount += 1
+
                     speak_text(arrowsCount)
 
-            height_diffs.append((N, arrowsCount))  # 记录帧数和高度差
-            if len(height_diffs) > 75: # 限制数据量
-                height_diffs.pop(0)
-                for i in range(len(height_diffs)):
-                    height_diffs[i] = (height_diffs[i][0] - 1, height_diffs[i][1])
+            plot_lis.append((N, (int(action_time[0])%1000,int(action_time[1])%1000,int(action_time[2])%1000)))  # 记录帧数和高度差
+            if len(plot_lis) > 75: # 限制数据量
+                plot_lis.pop(0)
+                for i in range(len(plot_lis)):
+                    plot_lis[i] = (plot_lis[i][0] - 1, plot_lis[i][1])
 
-            # 更新height_diff的图
-            x, y = zip(*height_diffs)  # 解压列表为x轴和y轴数据
-            ax_height_diff.clear()  # 清除旧图
-            ax_height_diff.plot(x, y, color='blue')
+            colors = ['red', 'green', 'blue']  # 分别对应多组数据的颜色
+
+            # 更新统计图
+            x, y = zip(*plot_lis)  # 解压列表为x轴和y轴数据
+
+            ys = [[item[1][i] for item in plot_lis] for i in range(3)]  # 分别对应多个y值的情况
+            plot_plot.clear()  # 清除旧图
+            for i, y in enumerate(ys):
+                plot_plot.plot(x, y, color=colors[i], label=f"Action {i+1}")
+            #plot_plot.plot(x, y, color='red')
             fig_height_diff.canvas.draw_idle()  # 更新显示
             plt.pause(0.001)
         #更新点位
