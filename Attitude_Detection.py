@@ -8,6 +8,8 @@ import datetime
 import pandas as pd
 
 import pyttsx3 #语言播报库
+import threading #线程分配
+
 
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils 
@@ -16,6 +18,14 @@ mp_drawing_styles = mp.solutions.drawing_styles
 colorclass = plt.cm.ScalarMappable(cmap='jet')
 colors = colorclass.to_rgba(np.linspace(0, 1, int(33)))
 colormap = (colors[:, 0:3])
+
+
+
+# 语言播报模块
+def speak_text(text):
+    engine = pyttsx3.init()
+    engine.say(text)
+    engine.runAndWait()
 
 def draw3d(plt, ax, world_landmarks, connnection=mp_pose.POSE_CONNECTIONS):
     ax.clear()
@@ -57,9 +67,6 @@ print(f"Video saved to {output_filename}")
 landmarks_data = []
 
 
-# 初始化语音引擎
-engine = pyttsx3.init()
-
 # 上一帧的关键点位置，初始化为空
 previous_landmarks = None
 displacement = None
@@ -68,28 +75,54 @@ displacement = None
 LEFT_WRIST_INDEX = 15
 
 # 定义动作链
-action_chain = []
+action = 0
+action_time = [0,0,0,0] # 站定，举弓，瞄准，“达到撒放”的时间节点 最近一次完成动作的时间
 
 # 帧计数
-n = 0
+n = 0 #临时
+N = 0 #总帧数
+arrowsCount = 0 #射箭支数
 
 # 举弓达顶点
 d = 0
+
+# 实现数据图标实时显示
+# 初始化一个列表用于存储height_diff数据
+height_diffs = []
+
+# 添加一个子图用于显示height_diff
+fig_height_diff, ax_height_diff = plt.subplots(figsize=(8, 4))
+ax_height_diff.set_xlabel('Frame')
+ax_height_diff.set_ylabel('Height Difference')
+(ax_height_diff.plot([], []))  # 初始化空图
+
+# 初始化一个定时器，用于实时更新height_diff的显示
+timer = fig_height_diff.canvas.new_timer(interval=100)  # 每100毫秒更新一次
+timer.add_callback(lambda event: ax_height_diff.relim(), fig_height_diff.canvas)
+timer.add_callback(lambda event: ax_height_diff.autoscale_view(True,True,True), fig_height_diff.canvas)
+timer.start()
+
+
+# 分配语言播报模块到新线程
+# 创建一个新的线程来运行speak_text函数
+t = threading.Thread(target=speak_text, args=("start"))
+t.start()# 开始新线程
+
 
 with mp_pose.Pose(
     min_detection_confidence=0.5,
     min_tracking_confidence=0.5, 
     model_complexity = 1) as pose:
-  fig = plt.figure()
-  ax = fig.add_subplot(111, projection="3d")
+  #fig = plt.figure()
+  #ax = fig.add_subplot(111, projection="3d")
 
   while cap.isOpened():
     success, image = cap.read()
     if not success:
         print("Ignoring empty camera frame.")
         # If loading a video, use 'break' instead of 'continue'.
-        #continue
-        break
+        continue
+        #break
     
     # To improve performance, optionally mark the image as not writeable to
     # pass by reference.
@@ -105,14 +138,15 @@ with mp_pose.Pose(
 
     # 人物姿态检测：静止
     # 如果有检测结果
-
     if results.pose_world_landmarks:
         # 当前帧的关键点位置
-        current_landmarks = np.array([[lmk.x, lmk.y, lmk.z]
+        current_landmarks = np.array([[lmk.x, lmk.y]
                                   for lmk in results.pose_world_landmarks.landmark])
 
-        left_wrist_current = current_landmarks[15]  # 左手腕
-        left_shoulder_current = current_landmarks[10]  # 左肩
+        L_wrist_current = current_landmarks[16]  # 左手腕
+        L_shoulder_current = current_landmarks[12]  # 左肩
+        R_wrist_current = current_landmarks[15]
+        R_shoulder_current = current_landmarks[11]
 
         # 确保上一帧的关键点位置已经被初始化
         if previous_landmarks is not None:
@@ -120,41 +154,73 @@ with mp_pose.Pose(
             displacement = np.linalg.norm(current_landmarks - previous_landmarks, axis=1)
             #print(displacement[LEFT_WRIST_INDEX])
             
-            
             # 静止检测
             # 检查是否所有关键点位移都小于阈值
-            if np.all(displacement < 0.01):  # 阈值设为0.01，根据实际情况调整
+            sum_below_threshold = np.sum(displacement)
+            if np.all(displacement < 0.03):  # 阈值设为0.01，根据实际情况调整
                 n += 1 #帧计数
             else:
-            	n = 0
-        
-            if n == 5:
-                # 执行语音播报
-                engine.say("Body is still")
-                engine.runAndWait()
                 n = 0
-                action_chain.append("still")
-            # 更新上一帧的关键点位置
-
-            # 举弓检测
-            # 检查手腕移动超过阈值
-            left_wrist_current = current_landmarks[15]  # 左手腕
-            left_shoulder_current = current_landmarks[10]  # 左肩
-            if displacement[LEFT_WRIST_INDEX] > 0.1:  # 阈值根据实际情况调整
+                action = 0
+            #print(n)
+            if n > 2:
                 # 执行语音播报
-                engine.say("Bow mioving detected!")
-                engine.runAndWait()
+                #speak_text("STOP")
+                #print("STOP")
+                action = 1
+                if start-action_time[0] > 2 :
+                    action_time[0] = start
+
+            # # # 更新上一帧的关键点位置
+
+            # # 举弓检测
+            # # 检查手腕移动超过阈值
+            if displacement[LEFT_WRIST_INDEX] > 0.07 and displacement[LEFT_WRIST_INDEX] < 0.2:  # 阈值根据实际情况调整
+                # 执行语音播报
+                #speak_text("RISE!")
+                #print("RISE!")
+                action = 2
+                if start-action_time[1] > 2 :
+                    action_time[1] = start
+ 
 
             # 瞄准检测
-            # 检测左手是否接近左肩高度
-            height_diff = abs(left_wrist_current[1] - left_shoulder_current[1])
-            #print(n,height_diff)
-            if height_diff < 0.1 and n > 0:
+            # 检测左手是否接近左肩高度 并且右手距离右肩够近(处于靠头一侧)
+            height_diff = abs(R_wrist_current[1] - R_shoulder_current[1])
+            dis = np.linalg.norm(L_wrist_current - L_shoulder_current)
+            #print(L_wrist_current[0] - L_shoulder_current[0],L_wrist_current[1] - L_shoulder_current[1])
+            if height_diff < 0.1 and dis < 0.13 and L_wrist_current[0] - L_shoulder_current[0] >= 0 and L_wrist_current[1] - L_shoulder_current[1] <= 0:
                 # 执行语音播报
-                engine.say("Aim!")
-                engine.runAndWait()            	
+                # speak_text("Aim!")
+                # print("Aim!")
+                action = 3
+                if start-action_time[2] > 2 :
+                    action_time[2] = start
 
-    previous_landmarks = current_landmarks
+            # 完整动作检验
+            print(int(action_time[0])%1000,int(action_time[1])%1000,int(action_time[2])%1000)
+            if all(action_time[i] < action_time[i + 1] for i in range(len(action_time) - 2)) and action_time[2] - action_time[0] < 30:  
+                    #校验动作依次完成
+                    #校验动作在最大时间内完成
+                if start-action_time[3] > 2 :
+                    action_time[3] = start
+                    arrowsCount += 1
+                    speak_text(arrowsCount)
+
+            height_diffs.append((N, arrowsCount))  # 记录帧数和高度差
+            if len(height_diffs) > 75: # 限制数据量
+                height_diffs.pop(0)
+                for i in range(len(height_diffs)):
+                    height_diffs[i] = (height_diffs[i][0] - 1, height_diffs[i][1])
+
+            # 更新height_diff的图
+            x, y = zip(*height_diffs)  # 解压列表为x轴和y轴数据
+            ax_height_diff.clear()  # 清除旧图
+            ax_height_diff.plot(x, y, color='blue')
+            fig_height_diff.canvas.draw_idle()  # 更新显示
+            plt.pause(0.001)
+        #更新点位
+        previous_landmarks = current_landmarks
 
     mp_drawing.draw_landmarks(
         image,
@@ -165,6 +231,7 @@ with mp_pose.Pose(
     end = time.time()
     fps = 1 / (end - start)
     fps = "%.2f fps" % fps
+    N += 1
     #实时显示帧数
     image = cv2.flip(image, 1)
     cv2.putText(image, "FPS {0}".format(fps), (100, 50),
@@ -186,7 +253,7 @@ with mp_pose.Pose(
     if cv2.waitKey(5) & 0xFF == 27:
         break
     # 绘制3D骨骼图
-    #if results.pose_world_landmarks:
+    # if results.pose_world_landmarks:
     #    draw3d(plt, ax, results.pose_world_landmarks)
 
     # ... 释放资源、关闭窗口的部分 ...
@@ -202,6 +269,8 @@ with mp_pose.Pose(
 # print(f"Landmarks data saved to landmarks_{current_time}.xlsx")
 
 # 在循环结束后释放资源
+
+plt.close(fig_height_diff) #释放matplotlib相关的资源
 cap.release()
 out.release()  # 释放VideoWriter
 cv2.destroyAllWindows()
