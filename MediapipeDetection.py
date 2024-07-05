@@ -299,7 +299,7 @@ def save_data_to_csv(data, filename="pose_analysis_data.csv"):
 					framestamp,
 					timestamp,
 					state,
-					*[f"{lm[0]:.3f},{lm[1]:.3f}" for lm in landmarks[:2]],  # 取前两个关节点坐标
+					landmarks,  # 取前两个关节点坐标
 					confidences  # 取前两个关节点的置信度
 				]
 				writer.writerow(row)
@@ -359,7 +359,7 @@ height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 fps_video = cap.get(cv2.CAP_PROP_FPS)
 # 获取时间，作为视频文件命名
 current_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')  # 格式化当前时间为字符串
-output_filename = f'output_{current_time}.mp4'
+output_filename = f'./data/video_output_{current_time}.mp4'
 # 初始化VideoWriter对象，这里使用'mp4v'作为编码器，您可能需要根据系统支持选择合适的编码器
 out = cv2.VideoWriter(output_filename, cv2.VideoWriter_fourcc(*'mp4v'), fps_video, (width, height)) 
 
@@ -454,7 +454,7 @@ with mp_pose.Pose(
 				save_count += 1
 				# 达到保存阈值时执行保存操作并清空列表
 				if save_count >= SAVE_THRESHOLD:
-					save_data_to_csv(data_to_save, f'pose_analysis_data_{current_time}.csv')
+					save_data_to_csv(data_to_save, f'./data/pose_analysis_data_{current_time}.csv')
 					data_to_save = [("header", "FrameStamp", "TimeStamp", "State", "landmarks", "Confidence")]  # 重置data_to_save为只含表头的状态
 					save_count = 0  # 重置计数器
 				
@@ -469,7 +469,7 @@ with mp_pose.Pose(
 
 # 程序结束前，如果data_to_save非空，再次保存剩余数据
 if data_to_save:
-    save_data_to_csv(data_to_save, f'pose_analysis_data_{current_time}.csv')
+    save_data_to_csv(data_to_save, f'./data/pose_analysis_data_{current_time}.csv')
 
 # ... 释放资源、关闭窗口的部分 ...
 print(shot_N)
