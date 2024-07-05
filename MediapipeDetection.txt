@@ -182,7 +182,6 @@ class DrwaImage:
 		else: #原图直接出！
 			drawed_image = self.image
 		cv2.imshow('MediaPipe Pose', drawed_image)
-		return drawed_image
 
 # 3D骨骼图色谱
 colorclass = plt.cm.ScalarMappable(cmap='jet')
@@ -264,48 +263,36 @@ class DeawPlot:
 
 		landmarks = []
 		for index, landmark in enumerate(world_landmarks.landmark):
-			landmarks.append([landmark.x, landmark.z, landmark.y*(-1)])
+		    landmarks.append([landmark.x, landmark.z, landmark.y*(-1)])
 		landmarks = np.array(landmarks)
 
 		self.ax_3d.scatter(landmarks[:, 0], landmarks[:, 1], landmarks[:, 2], c=np.array(colormap), s=50)
 		for _c in connections:
-			self.ax_3d.plot([landmarks[_c[0], 0], landmarks[_c[1], 0]],
-							[landmarks[_c[0], 1], landmarks[_c[1], 1]],
-							[landmarks[_c[0], 2], landmarks[_c[1], 2]], 'k')
+		    self.ax_3d.plot([landmarks[_c[0], 0], landmarks[_c[1], 0]],
+						    [landmarks[_c[0], 1], landmarks[_c[1], 1]],
+						    [landmarks[_c[0], 2], landmarks[_c[1], 2]], 'k')
 		self.fig3d.canvas.draw_idle()  # 更新显示
 		plt.pause(0.001)
 
 # 语言播报模块
 def speak_text(text):
-	engine = pyttsx3.init()
-	engine.say(text)
-	engine.runAndWait()
+    engine = pyttsx3.init()
+    engine.say(text)
+    engine.runAndWait()
 
 # 保存数据
 def save_data_to_csv(data, filename="pose_analysis_data.csv"):
-	"""保存数据到CSV文件"""
-	with open(filename, mode='a', newline='') as file:
-		writer = csv.writer(file)
-		if data[0] == "header":
-			# 写入表头
-			writer.writerow(["FrameStamp", "TimeStamp", "State", "landmarks", "Confidence"])
-		else:
-			for frame_data in data[1:]:
-				framestamp, timestamp, state, landmarks, confidences = frame_data
-				# 假设'landmarks'是一个包含所有关节点坐标的列表，且每个关节点是[x, y]格式
-				# 'confidences'是一个包含所有关节点置信度的列表
-				# 这里仅示例性地写出前两个关节点和对应的置信度，实际情况可能需要遍历这些列表
-				row = [
-					framestamp,
-					timestamp,
-					state,
-					*[f"{lm[0]:.3f},{lm[1]:.3f}" for lm in landmarks[:2]],  # 取前两个关节点坐标
-					confidences  # 取前两个关节点的置信度
-				]
-				writer.writerow(row)
-
-
-SAVE_THRESHOLD = 100 # 每多少帧保存一次数据
+    """保存数据到CSV文件"""
+    with open(filename, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if data[0] == "header":
+            # 写入表头
+            writer.writerow(["FrameStamp", "TimeStamp", "State", "landmarks", "Confidence"])
+        else:
+            for frame_data in data:
+                # 根据实际数据结构组织每一行的输出
+                row = # 请帮我补全这里的代码 
+                writer.writerow(row)
 
 # 状态判断阈值
 # 静止
@@ -362,11 +349,6 @@ current_time = datetime.datetime.now().strftime('%Y%m%d%H%M%S')  # 格式化当�
 output_filename = f'output_{current_time}.mp4'
 # 初始化VideoWriter对象，这里使用'mp4v'作为编码器，您可能需要根据系统支持选择合适的编码器
 out = cv2.VideoWriter(output_filename, cv2.VideoWriter_fourcc(*'mp4v'), fps_video, (width, height)) 
-
-# 初始化数据保存
-data_to_save = [("header", "FrameStamp", "TimeStamp", "State", "landmarks", "Confidence")]  # 初始化数据列表，包含表头
-save_count = 0  # 用于追踪已添加到data_to_save的数据条目数量
-
 
 with mp_pose.Pose(
 	min_detection_confidence=0.5,
@@ -432,7 +414,7 @@ with mp_pose.Pose(
 
 				# 绘制图像
 				drwa_image = DrwaImage(image, results ,start_time)
-				drawed_image = drwa_image.draw(2)
+				drwa_image.draw(2)
 
 				# 绘制统计图
 				# 构建数据
@@ -448,28 +430,22 @@ with mp_pose.Pose(
 				deaw_plot.draw3d(results.pose_world_landmarks)
 
 				# 将关键数据结构化并保存
-				data_to_save.append(
-					(N, start_time, current_state, current_LandmarkData.landmarks, current_LandmarkData.confidences),
-				)
-				save_count += 1
-				# 达到保存阈值时执行保存操作并清空列表
-				if save_count >= SAVE_THRESHOLD:
-					save_data_to_csv(data_to_save, f'pose_analysis_data_{current_time}.csv')
-					data_to_save = [("header", "FrameStamp", "TimeStamp", "State", "landmarks", "Confidence")]  # 重置data_to_save为只含表头的状态
-					save_count = 0  # 重置计数器
-				
-				# 将视频的帧写入输出文件
-				image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+				data_to_save = [
+				    ("header", "FrameStamp", "TimeStamp", "State", "landmarks", "Confidence")  # 第一行写入表头
+				]
+				# 添加当前帧数据到保存列表
+				data_to_save.extend([
+				    (N, start_time, current_state, current_LandmarkData.landmarks, current_LandmarkData.confidences),
+				])
+				save_data_to_csv(data_to_save, f'pose_analysis_data_{current_time}.csv')
+
+			    # 将视频的帧写入输出文件
 				out.write(image)
 
 			previous_LandmarkData = current_LandmarkData
 
 		if cv2.waitKey(5) & 0xFF == 27:
 			break
-
-# 程序结束前，如果data_to_save非空，再次保存剩余数据
-if data_to_save:
-    save_data_to_csv(data_to_save, f'pose_analysis_data_{current_time}.csv')
 
 # ... 释放资源、关闭窗口的部分 ...
 print(shot_N)
