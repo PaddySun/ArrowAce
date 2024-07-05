@@ -95,7 +95,7 @@ with mp_pose.Pose(
                 cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255),3)   
     
     # 实时计算展示
-    #cv2.imshow('MediaPipe Pose', image)
+    cv2.imshow('MediaPipe Pose', image)
 
     # 将处理后的帧写入输出文件
     out.write(image)
@@ -110,8 +110,8 @@ with mp_pose.Pose(
     if cv2.waitKey(5) & 0xFF == 27:
         break
     # 绘制3D骨骼图
-    #if results.pose_world_landmarks:
-    #    draw3d(plt, ax, results.pose_world_landmarks)
+    if results.pose_world_landmarks:
+        draw3d(plt, ax, results.pose_world_landmarks)
 
     # ... 释放资源、关闭窗口的部分 ...
 
