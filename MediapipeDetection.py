@@ -10,18 +10,18 @@ import pandas as pd
 import pyttsx3 #语言播报库
 import threading #线程分配
 
+# mediapipe 初始化
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils 
 mp_drawing_styles = mp.solutions.drawing_styles
 
-# 绘制3D视图
-colorclass = plt.cm.ScalarMappable(cmap='jet')
-colors = colorclass.to_rgba(np.linspace(0, 1, int(33)))
-colormap = (colors[:, 0:3])
-
 # 姿态记录类，记录关键节位置点，判断状态
 class LandmarkData:
-	def __init__(self, timestamp, landmarks_result):
+	def __init__(self, timestamp, landmarks_result, 
+		stationary_V_join = [0,30], 
+		L_wrist_v = 0.07, R_wrist_v = 0.03, 
+		L_wrist2shoulder_dis = 0.19, Wrist_Diff = [-0.02,0.02],
+		maxtime_for_single_shot = 60, mintime_for_single_shot = 6):
 		self.time = timestamp # 记录此帧的时间
 		#self.result = landmarks_result
 		self.landmarks = np.array([[lmk.x, lmk.y] for lmk in landmarks_result.pose_world_landmarks.landmark]) # 各节点坐标与置信度
@@ -32,6 +32,19 @@ class LandmarkData:
 		self.L_shoulder = self.dictionary_generation(12)  # 左肩
 		self.R_wrist = self.dictionary_generation(15)
 		self.R_shoulder = self.dictionary_generation(11)
+
+		# 判定阈值
+		# 静止
+		self.stationary_V_join = stationary_V_join #全身运动阈值
+		# 开弓
+		self.L_wrist_v = L_wrist_v #右手手腕移动速度阈值越小越精确
+		self.R_wrist_v = R_wrist_v #左手手腕移动速度阈值越小越精确
+		# 瞄准
+		self.L_wrist2shoulder_dis = L_wrist2shoulder_dis #右手手腕与右肩的距离 越小越精确
+		self.Wrist_Diff = Wrist_Diff #左手腕与左肩的距离 越小越精确
+		# 射击判定
+		self.maxtime_for_single_shot = maxtime_for_single_shot #最大单次射击时间
+		self.mintime_for_single_shot = mintime_for_single_shot #最小单次射击时间
 
 	# 关键关节字典生成
 	def dictionary_generation(self, n):
@@ -77,57 +90,44 @@ class LandmarkData:
 	# 状态判断
 	def state_judgment(self, previous_LandmarkData):
 
-		# 阈值
-		# 静止
-		stationary_V_join = [0,30] #全身运动阈值
-		# 开弓
-		L_wrist_v = 0.07 #右手手腕移动速度阈值越小越精确
-		R_wrist_v = 0.03 #左手手腕移动速度阈值越小越精确
-		# 瞄准
-		L_wrist2shoulder_dis = 0.19 #右手手腕与右肩的距离 越小越精确
-		Wrist_Diff = [-0.02,0.02] #左手腕与左肩的距离 越小越精确
-
-
 		# 状态向量 依次为 静止 开工 瞄准
 		self.state = -1
 		# 静止
 		V_join = self.V_join_calculation(previous_LandmarkData)
-		if stationary_V_join[0] < V_join < stationary_V_join[1]:
+		if self.stationary_V_join[0] < V_join < self.stationary_V_join[1]:
 			self.state = 0
 		
 		# 开弓
 		L_v = self.V_calculation(self.L_wrist, previous_LandmarkData.L_wrist)
 		R_v = self.V_calculation(self.R_wrist, previous_LandmarkData.R_wrist)
-		if L_v > L_wrist_v and R_v > R_wrist_v:
+		if L_v > self.L_wrist_v and R_v > self.R_wrist_v:
 			self.state = 1
 
 		# 瞄准
 		L_wrist2shoulder = np.linalg.norm(self.L_wrist["landmarks"] - self.L_shoulder["landmarks"])
-		wrist_diff = self.height_dis_calculation(1, self.R_wrist , self.R_shoulder)
-		if  L_wrist2shoulder < L_wrist2shoulder_dis and Wrist_Diff[0] < wrist_diff < Wrist_Diff[1]:
+		R_wrist_diff = self.height_dis_calculation(1, self.R_wrist , self.R_shoulder)
+		if  L_wrist2shoulder < self.L_wrist2shoulder_dis and self.Wrist_Diff[0] < R_wrist_diff < self.Wrist_Diff[1]:
 			self.state = 2
 		# 错误检测
 		if V_join == -1:
 			self.state = -1
 
-		state_measure = [V_join, L_v, R_v, L_wrist2shoulder, wrist_diff] # 将检测状态的量打包
+		state_measure = [V_join, L_v, R_v, L_wrist2shoulder, R_wrist_diff] # 将检测状态的量打包
 
 		return self.state, state_measure
 
 	# 判断是否完整完成了射箭动作
 	def archery_judgment(self, action_time, current_time):
-		maxtime_for_single_shot = 60
-		mintime_for_single_shot = 6
 
 		archery = False
-		if self.state == 2 and current_time - action_time[2] < maxtime_for_single_shot:
+		if self.state == 2 and current_time - action_time[2] < self.maxtime_for_single_shot:
 			#速射不预瞄
 			snapshot = all(action_time[i] < action_time[i + 1] for i in range(len(action_time) - 2)) and action_time[2] - action_time[0] < 60 
 			#预瞄，开工后停止再到靠位
 			pre_acquisition = action_time[1] < action_time[2] and action_time[0] < action_time[2] and action_time[2] - action_time[0] > 2 and action_time[2] - action_time[0] < 60
 			if snapshot or pre_acquisition:
 				# 
-				if current_time-action_time[3] > mintime_for_single_shot :
+				if current_time-action_time[3] > self.mintime_for_single_shot :
 					archery = True
 		return archery
 
@@ -180,6 +180,11 @@ class DrwaImage:
 			drawed_image = self.image
 		cv2.imshow('MediaPipe Pose', drawed_image)
 
+# 3D骨骼图色谱
+colorclass = plt.cm.ScalarMappable(cmap='jet')
+colors = colorclass.to_rgba(np.linspace(0, 1, int(33)))
+colormap = (colors[:, 0:3])
+
 # 绘制统计图
 class DeawPlot:
 	def __init__(self, mode ,colors = ['red', 'green', 'blue']):
@@ -195,16 +200,14 @@ class DeawPlot:
 		
 		self.fig3d = plt.figure()
 		self.ax_3d = self.fig3d.add_subplot(111, projection="3d")
-		# self.ax_3d.set_xlim3d(-1, 1)
-		# self.ax_3d.set_ylim3d(-1, 1)
-		# self.ax_3d.set_zlim3d(-1, 1)
 		
 		self.colors = colors
 		self.mode = mode
 
-
 		# 显示但不阻塞
 		plt.ion()
+
+		# 选择需要显示的统计图
 		if mode[0] == 1:
 			self.fig1.show()
 		else:
@@ -274,6 +277,27 @@ def speak_text(text):
     engine.say(text)
     engine.runAndWait()
 
+# 状态判断阈值
+# 静止
+stationary_V_join = [0,30] #全身运动阈值
+# 开弓
+L_wrist_v = 0.07 #右手手腕移动速度阈值越小越精确
+R_wrist_v = 0.03 #左手手腕移动速度阈值越小越精确
+# 瞄准
+L_wrist2shoulder_dis = 0.19 #右手手腕与右肩的距离 越小越精确
+Wrist_Diff = [-0.02,0.02] #左手腕与左肩的距离 越小越精确
+# 射击判定
+maxtime_for_single_shot = 60 #最大单次射击时间
+mintime_for_single_shot = 6 #最小单次射击时间
+
+
+# 初始化
+# 初始化绘图函数
+deaw_plot = DeawPlot([0,1,0])
+# 用于绘图的数据
+plot_lis1 = []
+plot_lis2 = [] 
+
 # 空列表用于存储每帧的landmarks数据
 landmarks_data = []
 
@@ -285,12 +309,6 @@ action_time = [0,0,0,0]
 
 # 帧数
 N = 0 #总帧数
-
-# 初始化绘图函数
-deaw_plot = DeawPlot([0,1,0])
-# 用于绘图的数据
-plot_lis1 = []
-plot_lis2 = []
 
 # 关键数据记录
 # 射箭支数
@@ -332,7 +350,11 @@ with mp_pose.Pose(
 		if results.pose_world_landmarks:
 			# 执行状态判断
 			# 构建 姿态记录类
-			current_LandmarkData = LandmarkData(start_time, results)
+			current_LandmarkData = LandmarkData(start_time, results,
+												stationary_V_join , 
+												L_wrist_v, R_wrist_v , 
+												L_wrist2shoulder_dis , Wrist_Diff ,
+												maxtime_for_single_shot , mintime_for_single_shot )
 			if previous_LandmarkData is not None:
 				N += 1
 
@@ -359,7 +381,7 @@ with mp_pose.Pose(
 					action_time[3] = start_time
 
 					shot_N += 1 #射出支数+1
-					shot_time_list.append = start_time #记录射箭时间
+					shot_time_list.append(start_time) #记录射箭时间
 					speak_text(shot_N) #语言播报支数统计
 
 				# 绘制图像
@@ -368,8 +390,8 @@ with mp_pose.Pose(
 
 				# 绘制统计图
 				# 构建数据
-				plot_lis1.append((N, (int(program_start_time - action_time[0])%1000,int(program_start_time - action_time[1])%1000,int(program_start_time - action_time[2])%1000)))
-				plot_lis2 = deaw_plot.preprocessing(plot_lis1)
+				plot_lis1.append((N, (int(action_time[0])%1000,int(action_time[1])%1000,int(action_time[2])%1000)))
+				plot_lis1 = deaw_plot.preprocessing(plot_lis1)
 
 				plot_lis2.append((N, current_state_measure[4])) 
 				plot_lis2 = deaw_plot.preprocessing(plot_lis2) 
