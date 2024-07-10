@@ -16,7 +16,7 @@
 
 编译运行将读取./data目录下最新的pose_analysis_data_XXXX.csv与video_output_XXXX.mp4的文件对，并将绘制默认15号点位（左手腕）的x与y坐标图。可通过更改play_video_with_landmark_plot()函数中的landmark_index值来更改显示的点位。
 
-![mp点位](./docs/mp点位.png)
+![mp点位](docs/mp点位.png)
 
 
 
