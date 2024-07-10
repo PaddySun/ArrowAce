@@ -1,0 +1,31 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Button Example</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+
+<button id="myButton">点击我调用后端函数</button>
+
+<script>
+    $(document).ready(function(){
+        $("#myButton").click(function(){
+            $.ajax({
+                url: "/call_function",
+                type: "POST",
+                success: function(response){
+                    alert(response.result);
+                },
+                error: function(error){
+                    console.log("Error:", error);
+                }
+            });
+        });
+    });
+</script>
+
+</body>
+</html>
